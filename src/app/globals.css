@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .glass-panel {
+        @apply bg-white/70 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_0_rgba(15,118,110,0.05)];
+    }
+}
+
+body {
+    background-color: #f0fdf9;
+    /* Soft teal tint */
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar for chat */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #ccfbf1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #99f6e4;
+}
