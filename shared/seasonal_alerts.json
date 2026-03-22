@@ -1,7 +1,0 @@
-{
-  "June": ["Dengue", "Malaria"],
-  "July": ["Dengue", "Malaria"],
-  "August": ["Dengue", "Malaria", "Typhoid"],
-  "May": ["Heatstroke", "Dehydration"],
-  "December": ["Flu", "Cold"]
-}
