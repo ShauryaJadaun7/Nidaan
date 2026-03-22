@@ -69,53 +69,58 @@ export async function POST(req: Request) {
         // Add language instruction
         activePrompt += `\n\nCRITICAL: Respond in ${language}. Ensure all text values in the JSON are correctly translated into ${language}. Keep formatting consistent.`;
 
-        // --- IMAGE PATH: Use Groq vision model ---
+        // --- IMAGE PATH: Use Custom Hugging Face Vision Model ---
         if (image) {
-            const lastUserMsg = messages[messages.length - 1];
-            const textMessages = messages.slice(0, -1).map((m: any) => ({
-                role: m.role, content: m.content
-            }));
+            try {
+                // Prepare base64 image for Gradio / HF Space
+                const base64Data = image.split(',')[1];
+                
+                const hfRes = await fetch("https://bazukaflash-swasthya-vision.hf.space/run/predict", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        data: [image] // Most Gradio spaces take the full data URI
+                    })
+                });
+                
+                const hfData = await hfRes.json();
+                const prediction = hfData.data ? hfData.data[0] : "Unable to classify image";
+                
+                // Now feed this specialized prediction into the LLM for structured triage
+                const lastUserMsg = messages[messages.length - 1];
+                const textMessages = messages.slice(0, -1).map((m: any) => ({
+                    role: m.role, content: m.content
+                }));
 
-            const visionMessage = {
-                role: "user",
-                content: [
-                    { type: "text", text: `${activePrompt}\n\nUser request: ${lastUserMsg.content}` },
-                    { type: "image_url", image_url: { url: image } }
-                ]
-            };
+                const visionAnalysisPrompt = {
+                    role: "user",
+                    content: `${activePrompt}\n\nSPECIALIZED VISION MODEL OUTPUT: ${JSON.stringify(prediction)}\n\nUser request: ${lastUserMsg.content}. Please provide a clinical triage based on these results.`
+                };
 
-            const visionModels = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.2-11b-vision-preview"];
-            
-            for (const visionModel of visionModels) {
-                try {
-                    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                        method: "POST",
-                        headers: {
-                            "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            model: visionModel,
-                            messages: [...textMessages, visionMessage],
-                            temperature: 0.3,
-                            max_tokens: 1024,
-                        })
-                    });
-                    const data = await res.json();
-                    
-                    if (data.choices && data.choices.length > 0) {
-                        return NextResponse.json({ reply: data.choices[0].message.content });
-                    }
-                    if (data.error) {
-                        console.error(`Groq vision (${visionModel}) error:`, data.error.message);
-                        continue;
-                    }
-                } catch (e) {
-                    console.error(`Model ${visionModel} failed:`, e);
-                    continue;
+                const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        model: "llama-3.1-8b-instant",
+                        messages: [...textMessages, visionAnalysisPrompt],
+                        temperature: 0.3,
+                        max_tokens: 1024,
+                    })
+                });
+                
+                const data = await groqRes.json();
+                if (data.choices && data.choices.length > 0) {
+                    return NextResponse.json({ reply: data.choices[0].message.content });
                 }
+            } catch (e) {
+                console.error("Custom Vision Model Error:", e);
+                // Fallback to text analysis if vision fails
             }
-            return NextResponse.json({ reply: JSON.stringify({ triage: "VISIT_CLINIC", confidence: 50, summary: "Image analysis is temporarily unavailable. Please describe the image in text.", keySymptoms: [], medicalReasoning: "Unable to process the image at this time.", suggestedCare: "Please describe what you see in the image as text.", nextStep: "Type a description of the image content." }) });
+            
+            return NextResponse.json({ reply: JSON.stringify({ triage: "VISIT_CLINIC", confidence: 50, summary: "Custom vision analysis encountered an issue. Please describe the image as text for better assessment.", keySymptoms: ["System Error"], medicalReasoning: "The specialized vision model failed to respond.", suggestedCare: "Consult a clinician for physical examination.", nextStep: "Describe symptoms in detail." }) });
         }
 
         // --- TEXT PATH: Use Groq ---
